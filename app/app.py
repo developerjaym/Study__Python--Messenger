@@ -69,9 +69,10 @@ games_schema = GameSchema(many=True)
 
 class Chatters(Resource):
 
-    def get(self):
+    @token_required
+    def get(self, chatter):
 
-        chatters = Chatter.query.all()
+        chatters = Chatter.query.order_by(Chatter.username.asc()).all()
 
         response = make_response(
             chatters_schema.dump(chatters),
@@ -165,6 +166,30 @@ class ChatterTokenByUsername(Resource):
 
 
 api.add_resource(ChatterTokenByUsername, '/chatters/<string:username>/token')
+
+class ChatterFriendsByUsername(Resource):
+    @token_required
+    def get(self, username, chatter):
+        return make_response(chatters_schema.dump(chatter.friends), 200,)
+
+    @token_required
+    def post(self, username, chatter):
+        print("$$$$$$$$$", request.json)
+        # TODO stop users from adding themselves as friends
+        # TODO stop users from adding friends they already have
+        friend = Chatter.query.filter(Chatter.username == request.json['friend']).one()
+        chatter.friends.append(friend)
+        db.session.commit()
+
+        response = make_response(
+            chatters_schema.dump(chatter.friends),
+            201,
+        )
+
+        return response
+
+
+api.add_resource(ChatterFriendsByUsername, '/chatters/<string:username>/friends')
 
 class GamesByUsername(Resource):
 
