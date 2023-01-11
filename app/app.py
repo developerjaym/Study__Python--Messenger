@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from AuthDecorators import token_required
-from flask import Flask, jsonify, request, make_response, Response
+from flask import Flask, jsonify, request, make_response, Response, abort
 from flask_migrate import Migrate
 from flask_restful import Api, Resource
 from flask_marshmallow import Marshmallow
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from flask_cors import CORS
-from models import db, Chatter, Game
+from models import db, Chatter, Game, Message, Conversation
 from AuthClient import AuthClient, UserDto
 
 app = Flask(__name__)
@@ -66,6 +66,53 @@ class GameSchema(ma.SQLAlchemySchema):
     )
 game_schema = GameSchema()
 games_schema = GameSchema(many=True)
+
+class MessageSchema(ma.SQLAlchemySchema):
+
+    class Meta:
+        model = Message
+        load_instance = True
+
+    timestamp = ma.auto_field()
+    content = ma.auto_field()
+    author = ma.Nested(chatter_schema)
+    id = ma.auto_field()
+    #TODO get author in here???
+
+    url = ma.Hyperlinks(
+        { #TODO
+            # "self": ma.URLFor(
+            #     "gamesbyusernameandname",
+            #     values=dict(username="<username>", name="<name>")),
+            # "collection": ma.URLFor("games"),
+        }
+    )
+message_schema = MessageSchema()
+messages_schema = MessageSchema(many=True)
+
+class ConversationSchema(ma.SQLAlchemySchema):
+
+    class Meta:
+        model = Conversation
+        load_instance = True
+
+    id = ma.auto_field()
+    chatters = ma.Nested(chatters_schema)
+    messages = ma.Nested(messages_schema)
+    #TODO get messages in here???
+
+    url = ma.Hyperlinks(
+        { #TODO
+            # "self": ma.URLFor(
+            #     "gamesbyusernameandname",
+            #     values=dict(username="<username>", name="<name>")),
+            # "collection": ma.URLFor("games"),
+        }
+    )
+conversation_schema = ConversationSchema()
+conversations_schema = ConversationSchema(many=True)
+
+
 
 class Chatters(Resource):
 
@@ -170,19 +217,25 @@ api.add_resource(ChatterTokenByUsername, '/chatters/<string:username>/token')
 class ChatterFriendsByUsername(Resource):
     @token_required
     def get(self, username, chatter):
-        return make_response(chatters_schema.dump(chatter.friends), 200,)
+        if chatter.username != username:
+            abort(403)
+        
+        return make_response(chatters_schema.dump(Chatter.query.filter(Chatter.username == chatter.username).one().friends), 200,)
 
     @token_required
     def post(self, username, chatter):
         print("$$$$$$$$$", request.json)
         # TODO stop users from adding themselves as friends
         # TODO stop users from adding friends they already have
+        if chatter.username != username:
+            abort(403)
+        adder_friend = Chatter.query.filter(Chatter.username == chatter.username).one()    
         friend = Chatter.query.filter(Chatter.username == request.json['friend']).one()
-        chatter.friends.append(friend)
+        adder_friend.friends.append(friend)
         db.session.commit()
 
         response = make_response(
-            chatters_schema.dump(chatter.friends),
+            chatters_schema.dump(adder_friend.friends),
             201,
         )
 
@@ -221,7 +274,87 @@ class GamesByUsername(Resource):
         return response
 
 api.add_resource(GamesByUsername, '/chatters/<string:username>/games')
-#TODO post games, get games by user id
+
+class ConversationsByUsername(Resource):
+
+    @token_required
+    def get(self, username, chatter):
+        print('username', username)
+        print('chatter', chatter)
+        # chatter = Chatter.query.filter_by(username=username).first()
+
+        response = make_response(
+            conversations_schema.dump(chatter.conversations),
+            200,
+        )
+
+        return response
+
+    @token_required    
+    def post(self, username, chatter):
+        #TODO verify username in URL matches chatter's username
+        #TODO filter duplicates from the 
+        # the request will include the usernames of the chatters
+        # take those usernames, construct the conversation, add, commit
+        print('just started chat with', request.json, chatter)
+        chatters = Chatter.query.filter(Chatter.username.in_(request.json)).all()
+        chatters.append(chatter)
+        print('found these matches', chatters)
+        new_conversation = Conversation(chatters = chatters, messages = [])
+        db.session.add(new_conversation)
+        db.session.commit()
+
+        response = make_response(
+            conversation_schema.dump(new_conversation),
+            201,
+        )
+
+        return response
+
+api.add_resource(ConversationsByUsername, '/chatters/<string:username>/conversations')
+
+class ConversationsByUsernameAndId(Resource):
+
+    @token_required
+    def get(self, username, id, chatter):
+        print('username', username)
+        print('chatter', chatter)
+        #TODO error handling
+        response = make_response(
+            conversation_schema.dump(Conversation.query.filter(Conversation.id == id).one()),
+            200,
+        )
+
+        return response
+
+api.add_resource(ConversationsByUsernameAndId, '/chatters/<string:username>/conversations/<int:id>')
+
+class MessagesByUsernameAndConversationId(Resource):
+
+    @token_required
+    def post(self, username, id, chatter):
+        print('username', username)
+        print('chatter', chatter)
+        new_message = Message(conversation_id=id, author_id = chatter.id, content=request.json['content'])
+        db.session.add(new_message)
+        db.session.commit()
+        #TODO error handling
+        response = make_response(
+            message_schema.dump(new_message),
+            200,
+        )
+
+        return response
+
+    @token_required
+    def get(self, username, id, chatter):
+        print(request.args['after'])
+        after_id = request.args['after']
+        new_messages = Message.query.filter(Message.conversation_id == id, Message.id > after_id).all()
+        return make_response(messages_schema.dump(new_messages), 200,)
+
+api.add_resource(MessagesByUsernameAndConversationId, '/chatters/<string:username>/conversations/<int:id>/messages')
+
 
 
 if __name__ == '__main__':
