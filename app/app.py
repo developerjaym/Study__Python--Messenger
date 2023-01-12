@@ -98,7 +98,7 @@ class ConversationSchema(ma.SQLAlchemySchema):
 
     id = ma.auto_field()
     chatters = ma.Nested(chatters_schema)
-    messages = ma.Nested(messages_schema)
+    # messages = ma.Nested(messages_schema)
     #TODO get messages in here???
 
     url = ma.Hyperlinks(
@@ -281,10 +281,19 @@ class ConversationsByUsername(Resource):
     def get(self, username, chatter):
         print('username', username)
         print('chatter', chatter)
-        # chatter = Chatter.query.filter_by(username=username).first()
+        if chatter.username != username:
+            abort(403)
+
+        chatter = Chatter.query.filter(Chatter.username==chatter.username).first()
+        if "with" in request.args.keys():
+            and_contains_this_guy = Chatter.query.filter(Chatter.username == request.args["with"]).first()
+            results = set(set(and_contains_this_guy.conversations) & set(chatter.conversations))
+        else:
+            results = chatter.conversations    
+            
 
         response = make_response(
-            conversations_schema.dump(chatter.conversations),
+            conversations_schema.dump(results),
             200,
         )
 
@@ -328,6 +337,7 @@ class ConversationsByUsernameAndId(Resource):
         return response
 
 api.add_resource(ConversationsByUsernameAndId, '/chatters/<string:username>/conversations/<int:id>')
+
 
 class MessagesByUsernameAndConversationId(Resource):
 
