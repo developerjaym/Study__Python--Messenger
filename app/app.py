@@ -244,6 +244,25 @@ class ChatterFriendsByUsername(Resource):
 
 api.add_resource(ChatterFriendsByUsername, '/chatters/<string:username>/friends')
 
+class DeleteFriendByUsernameAndFriendUsername(Resource):
+
+    @token_required
+    def delete(self, username, friend, chatter):
+        if chatter.username != username:
+            abort(403)
+        #TODO
+        # Delete friendship
+        # Delete conversations containing both of these users
+        chatter = Chatter.query.filter(Chatter.username == chatter.username).one()
+        chatter.friends = [chatter_friend for chatter_friend in chatter.friends if chatter_friend.username != friend]
+        friend_chatter = Chatter.query.filter(Chatter.username == friend).one()
+        friend_chatter.friends =  [chatter_friend for chatter_friend in friend_chatter.friends if chatter_friend.username != friend]
+        shared_conversations = find_conversations_with_these_two(chatter, friend_chatter)
+        [db.session.delete(shared_conversation) for shared_conversation in shared_conversations]
+        db.session.commit()
+
+api.add_resource(DeleteFriendByUsernameAndFriendUsername, '/chatters/<string:username>/friends/<string:friend>')
+
 class GamesByUsername(Resource):
 
     @token_required
@@ -275,6 +294,9 @@ class GamesByUsername(Resource):
 
 api.add_resource(GamesByUsername, '/chatters/<string:username>/games')
 
+def find_conversations_with_these_two(chatter_a, chatter_b):
+    return set(set(chatter_a.conversations) & set(chatter_b.conversations))
+
 class ConversationsByUsername(Resource):
 
     @token_required
@@ -287,7 +309,7 @@ class ConversationsByUsername(Resource):
         chatter = Chatter.query.filter(Chatter.username==chatter.username).first()
         if "with" in request.args.keys():
             and_contains_this_guy = Chatter.query.filter(Chatter.username == request.args["with"]).first()
-            results = set(set(and_contains_this_guy.conversations) & set(chatter.conversations))
+            results = find_conversations_with_these_two(and_contains_this_guy, chatter)#set(set(and_contains_this_guy.conversations) & set(chatter.conversations))
         else:
             results = chatter.conversations    
             
