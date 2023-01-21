@@ -12,7 +12,6 @@ def token_required(f):
     token_cache = {}
     @wraps(f)
     def wrap(*args, **kwargs):
-        print("$$$$$$$$$$$$$$$$ tokenRequired", request.headers["authorization"])
         # if request has no token, abort
         if not request.headers["authorization"]:
             abort(401)
@@ -24,26 +23,20 @@ def token_required(f):
         # If we've validated this token before and it's expired
         #  then abort without calling auth endpoint
         if token in token_cache.keys() and token_cache[token]['exp'] > get_now():
-            print('using cached token')
-            return f(*args, **kwargs, chatter=token_cache[token]['chatter']) 
+            return f(*args, **kwargs, user_data=token_cache[token]['chatter']) 
         elif token in token_cache.keys() and token_cache[token]['exp'] <= get_now():
-            print('cached token is expired')
             abort(403)
         
-        print('token is not in cache')
-
         if not AuthClient.validate_token(token):
             abort(403)
-        print("jwt token probs", token)
         user_data = jwt.decode(token, options={"verify_signature": False})
         # get user via some ORM system
-        print('user_data from jwt', user_data)
-        chatter = Chatter.query.filter(Chatter.username == user_data["username"]).one()
-        token_cache[token] = {'exp': user_data['exp'], 'chatter': chatter}
+        # chatter = Chatter.query.filter(Chatter.username == user_data["username"]).one()
+        token_cache[token] = {'exp': user_data['exp'], 'chatter': user_data}
         # make user available down the pipeline via flask.g
         # g.user = user
         # finally call f. f() now haves access to g.user
-        return f(*args, **kwargs, chatter=chatter)
+        return f(*args, **kwargs, user_data=user_data)
    
     return wrap
 
@@ -51,21 +44,18 @@ def token_validity_cache(f):
     token_dict = {}
     @wraps(f)
     def wrap(*args, **kwargs):
-        print("$$$$$$$$$$$$$$$$ tokenRequired", request.headers["authorization"])
         # if request has no token, abort
         if not request.headers["authorization"]:
             abort(401)
         token = request.headers["authorization"].split(" ")[1]
         if not AuthClient.validate_token(token):
             abort(403)
-        print("jwt token probs", token)
         user_data = jwt.decode(token, options={"verify_signature": False})
         # get user via some ORM system
-        print('user_data from jwt', user_data)
-        chatter = Chatter.query.filter(Chatter.username == user_data["username"]).one()
+        # chatter = Chatter.query.filter(Chatter.username == user_data["username"]).one()
         # make user available down the pipeline via flask.g
         # g.user = user
         # finally call f. f() now haves access to g.user
-        return f(*args, **kwargs, chatter=chatter)
+        return f(*args, **kwargs, user_data=user_data)
    
     return wrap

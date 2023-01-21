@@ -23,10 +23,8 @@ class AuthClient:
             return json.loads(decoded)
         abort(response.status_code)   
     def validate_token(token):
-        print('validate_token', token)
         URL = "https://jayman.pythonanywhere.com/jwt/validate"
         response = requests.get(URL, headers={"Authorization": f"Bearer {token}"})
-        print(response)
         if response.ok:
             return True
         return False

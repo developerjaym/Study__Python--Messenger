@@ -19,12 +19,14 @@ class Chatter(db.Model):
     username = db.Column(db.String, unique=True)
 
     games = db.relationship('Game', backref='chatter')
+
     # Referenced https://stackoverflow.com/questions/9116924/how-can-i-achieve-a-self-referencing-many-to-many-relationship-on-the-sqlalchemy
     # (The creator sqlalchemy gave the top answer)
     friends = db.relationship("Chatter", secondary=friendship_table, 
                            primaryjoin=id==friendship_table.c.left_id,
                            secondaryjoin=id==friendship_table.c.right_id,
     )
+
 
     def __repr__(self):
         return f'<Chatter {self.username}>'
@@ -83,3 +85,27 @@ class Message(db.Model):
 
     def __repr__(self):
         return f'<Message {self.content}>'
+
+class InstallableApp(db.Model):
+    __tablename__ = 'apps'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String)
+    link = db.Column(db.String)
+    image = db.Column(db.String)
+    description = db.Column(db.String)
+
+    def __repr__(self):
+        return f'<App {self.name}, {self.link}, {self.image} {self.description}>'
+
+class AppInstallation(db.Model):
+    __tablename__ = 'app_installations'
+
+    # id = db.Column(db.Integer, primary_key=True)
+    chatter_id = db.Column(db.Integer, db.ForeignKey('chatters.id'), primary_key = True)
+    app_id = db.Column(db.Integer, db.ForeignKey('apps.id'), primary_key = True)
+    chatter = db.relationship('Chatter', backref=db.backref('app_installations'))
+    app = db.relationship('InstallableApp', backref=db.backref('app_installations'))
+
+    def __repr__(self):
+        return f'<AppInstallation {self.chatter_id}, {self.app_id}>'        
